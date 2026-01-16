@@ -442,11 +442,20 @@ function App() {
     );
 
     socket.on("fog_update", ({ enemyGrid }) => {
-      setEnemyFog(enemyGrid);
+      const next = enemyGrid ?? {};
+      setEnemyFog({
+        shots: Array.isArray(next.shots) ? next.shots : [],
+        shipsSunk: Number.isFinite(next.shipsSunk) ? next.shipsSunk : 0,
+      });
     });
 
     socket.on("self_update", ({ ownGrid }) => {
-      setSelfGrid(ownGrid);
+      const next = ownGrid ?? {};
+      setSelfGrid({
+        hits: Array.isArray(next.hits) ? next.hits : [],
+        misses: Array.isArray(next.misses) ? next.misses : [],
+        ships: Array.isArray(next.ships) ? next.ships : [],
+      });
     });
 
     socket.on("game_over", ({ winnerId, reason }) => {
@@ -512,6 +521,25 @@ function App() {
     );
     if (!shot) return "empty";
     return shot.result === "hit" ? "hit" : "miss";
+  };
+
+  const getSelfCellStatus = (row, col, fallbackCell) => {
+    if (!isMultiplayer) {
+      return getCellStatus(fallbackCell, false);
+    }
+    const wasHit = selfGrid.hits.some((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return false;
+      const [hitRow, hitCol] = entry;
+      return hitRow === row && hitCol === col;
+    });
+    if (wasHit) return "hit";
+    const wasMiss = selfGrid.misses.some((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return false;
+      const [missRow, missCol] = entry;
+      return missRow === row && missCol === col;
+    });
+    if (wasMiss) return "miss";
+    return fallbackCell.shipId !== null ? "ship" : "empty";
   };
 
   return (
@@ -718,9 +746,10 @@ function App() {
                   <button
                     key={`player-${getCellKey(rowIndex, colIndex)}`}
                     type="button"
-                    className={`cell ${getCellStatus(
-                      player ? player.board[rowIndex][colIndex] : cell,
-                      false
+                    className={`cell ${getSelfCellStatus(
+                      rowIndex,
+                      colIndex,
+                      player ? player.board[rowIndex][colIndex] : cell
                     )}`}
                     onClick={() => handleManualPlacement(rowIndex, colIndex)}
                     disabled={!!player}
