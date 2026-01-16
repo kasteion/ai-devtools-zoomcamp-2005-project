@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
 import "./App.css";
 
 const BOARD_SIZE = 10;
@@ -148,6 +149,10 @@ const createEmptyPlacement = () => ({
   ships: SHIPS.map((ship) => ({ ...ship, positions: [], hits: 0 })),
 });
 
+const SERVER_URL = "http://localhost:5175";
+const createEmptyFog = () => ({ shots: [], shipsSunk: 0 });
+const createEmptySelfGrid = () => ({ hits: [], misses: [], ships: [] });
+
 const initialPlacement = createEmptyPlacement();
 
 const getCellKey = (row, col) => `${row}-${col}`;
@@ -162,7 +167,28 @@ function App() {
   const [winner, setWinner] = useState(null);
   const [message, setMessage] = useState("Place your fleet to start the game.");
 
+  const [isMultiplayer, setIsMultiplayer] = useState(true);
+  const [playerName, setPlayerName] = useState("Player");
+  const [roomIdInput, setRoomIdInput] = useState("");
+  const [roomId, setRoomId] = useState(null);
+  const [playerId, setPlayerId] = useState(null);
+  const [roomPhase, setRoomPhase] = useState("idle");
+  const [activePlayerId, setActivePlayerId] = useState(null);
+  const [roomPlayers, setRoomPlayers] = useState([]);
+  const [enemyFog, setEnemyFog] = useState(createEmptyFog());
+  const [selfGrid, setSelfGrid] = useState(createEmptySelfGrid());
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  const socketRef = useRef(null);
+
   const remainingToPlace = SHIPS.length - currentShipIndex;
+  const isInRoom = Boolean(roomId && playerId);
+  const canStartLocal = !isMultiplayer;
+  const isReadyToSubmit = currentShipIndex >= SHIPS.length;
+  const isMyTurn = isMultiplayer
+    ? activePlayerId && playerId && activePlayerId === playerId
+    : currentTurn === "player";
 
   const playerStats = useMemo(
     () => (player ? calculateStats(player) : null),
@@ -217,13 +243,21 @@ function App() {
     const auto = randomlyPlaceShips();
     setPlacement({ board: auto.board, ships: auto.ships });
     setCurrentShipIndex(SHIPS.length);
-    setMessage("Fleet placed automatically. Start the battle.");
+    setMessage(
+      isMultiplayer
+        ? "Fleet placed automatically. Submit your placement."
+        : "Fleet placed automatically. Start the battle."
+    );
   };
 
   const startGame = () => {
     if (player) return;
     if (currentShipIndex < SHIPS.length) {
       setMessage("Place all ships before starting the game.");
+      return;
+    }
+    if (!canStartLocal) {
+      setMessage("Use multiplayer controls to create/join a room.");
       return;
     }
     const enemy = randomlyPlaceShips();
@@ -249,6 +283,15 @@ function App() {
   };
 
   const handlePlayerShot = (row, col) => {
+    if (isMultiplayer) {
+      if (!isInRoom || !isMyTurn || roomPhase !== "playing") return;
+      socketRef.current?.emit("take_shot", {
+        roomId,
+        playerId,
+        target: { row, col },
+      });
+      return;
+    }
     if (!player || !computer) return;
     if (winner) return;
     if (currentTurn !== "player") return;
@@ -305,6 +348,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (isMultiplayer) return;
     if (!player || !computer) return;
     if (winner) return;
     if (currentTurn !== "computer") return;
@@ -312,7 +356,7 @@ function App() {
       handleComputerShot();
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [player, computer, currentTurn, winner]);
+  }, [player, computer, currentTurn, winner, isMultiplayer]);
 
   const handleReset = () => {
     setPlacement(createEmptyPlacement());
@@ -323,6 +367,136 @@ function App() {
     setCurrentTurn("player");
     setWinner(null);
     setMessage("Place your fleet to start the game.");
+    setEnemyFog(createEmptyFog());
+    setSelfGrid(createEmptySelfGrid());
+    setRoomPhase("idle");
+    setActivePlayerId(null);
+    setRoomPlayers([]);
+    setRoomId(null);
+    setPlayerId(null);
+    setErrorMessage(null);
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+  };
+
+  const handleConnect = () => {
+    if (socketRef.current) return;
+    const socket = io(SERVER_URL, { transports: ["websocket"] });
+    socketRef.current = socket;
+    setMessage("Connecting to server...");
+
+    socket.on("connect", () => {
+      setIsConnected(true);
+      setMessage("Connected. Create or join a room.");
+    });
+
+    socket.on("disconnect", () => {
+      setIsConnected(false);
+      setMessage("Disconnected from server.");
+      setRoomPhase("idle");
+      setActivePlayerId(null);
+      setRoomPlayers([]);
+      setRoomId(null);
+      setPlayerId(null);
+    });
+
+    socket.on("room_created", ({ roomId: createdRoomId, playerId }) => {
+      setRoomId(createdRoomId);
+      setPlayerId(playerId);
+      setMessage(`Room created (${createdRoomId}). Awaiting opponent.`);
+    });
+
+    socket.on("room_joined", ({ roomId: joinedRoomId, playerId }) => {
+      setRoomId(joinedRoomId);
+      setPlayerId(playerId);
+      setMessage(`Joined room ${joinedRoomId}. Place your fleet.`);
+    });
+
+    socket.on("room_state", (state) => {
+      setRoomPhase(state.phase);
+      setActivePlayerId(state.activePlayerId);
+      setRoomPlayers(state.players ?? []);
+      if (state.phase === "playing") {
+        setMessage(
+          state.activePlayerId === playerId
+            ? "Your turn. Fire on the enemy grid."
+            : "Opponent turn. Waiting..."
+        );
+      }
+    });
+
+    socket.on("placement_accepted", ({ readyCount }) => {
+      setMessage(`Placement accepted. Ready players: ${readyCount}/2.`);
+    });
+
+    socket.on(
+      "shot_result",
+      ({ result, isSunk, shipName, nextTurnPlayerId }) => {
+        if (result === "hit") {
+          setMessage(isSunk ? `Hit! You sank ${shipName}.` : "Hit!");
+        } else if (result === "miss") {
+          setMessage("Miss.");
+        }
+        setActivePlayerId(nextTurnPlayerId);
+      }
+    );
+
+    socket.on("fog_update", ({ enemyGrid }) => {
+      setEnemyFog(enemyGrid);
+    });
+
+    socket.on("self_update", ({ ownGrid }) => {
+      setSelfGrid(ownGrid);
+    });
+
+    socket.on("game_over", ({ winnerId, reason }) => {
+      const youWon = winnerId && winnerId === playerId;
+      setWinner(youWon ? "player" : "computer");
+      setMessage(
+        reason === "opponent_left"
+          ? "Opponent left the match."
+          : youWon
+          ? "You win! All enemy ships have been sunk."
+          : "You lose. Your fleet was sunk."
+      );
+    });
+
+    socket.on("error", ({ code }) => {
+      setErrorMessage(code);
+      setMessage(`Error: ${code}`);
+    });
+  };
+
+  const handleCreateRoom = () => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("create_room", { playerName });
+  };
+
+  const handleJoinRoom = () => {
+    if (!socketRef.current || !roomIdInput) return;
+    socketRef.current.emit("join_room", {
+      roomId: roomIdInput.trim(),
+      playerName,
+    });
+  };
+
+  const handleSubmitPlacement = () => {
+    if (!socketRef.current || !roomId || !playerId) return;
+    if (!isReadyToSubmit) {
+      setMessage("Place all ships before submitting.");
+      return;
+    }
+    socketRef.current.emit("submit_placement", {
+      roomId,
+      playerId,
+      placements: {
+        ships: placement.ships.map(({ name, size, positions }) => ({
+          name,
+          size,
+          positions,
+        })),
+      },
+    });
   };
 
   const getCellStatus = (cell, hideShips) => {
@@ -332,6 +506,14 @@ function App() {
     return "empty";
   };
 
+  const getEnemyCellStatus = (row, col) => {
+    const shot = enemyFog.shots.find(
+      (entry) => entry.row === row && entry.col === col
+    );
+    if (!shot) return "empty";
+    return shot.result === "hit" ? "hit" : "miss";
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -339,8 +521,16 @@ function App() {
           <p className="eyebrow">Battleship Command</p>
           <h1>Battleship</h1>
           <p className="status">{message}</p>
+          {errorMessage && <p className="status">Last error: {errorMessage}</p>}
         </div>
         <div className="controls">
+          <button
+            type="button"
+            onClick={() => setIsMultiplayer((prev) => !prev)}
+            disabled={!!player || isInRoom}
+          >
+            Mode: {isMultiplayer ? "Multiplayer" : "Local"}
+          </button>
           <button
             type="button"
             onClick={handleToggleOrientation}
@@ -359,6 +549,76 @@ function App() {
           </button>
         </div>
       </header>
+
+      {isMultiplayer && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Multiplayer Controls</h2>
+            <span className="turn-indicator">
+              {isConnected ? "Connected" : "Offline"}
+            </span>
+          </div>
+          <p className="panel-subtitle">
+            Connect to the server, create or join a room, then submit your
+            placement.
+          </p>
+          <div className="controls">
+            <button
+              type="button"
+              onClick={handleConnect}
+              disabled={isConnected}
+            >
+              Connect
+            </button>
+            <input
+              type="text"
+              value={playerName}
+              onChange={(event) => setPlayerName(event.target.value)}
+              placeholder="Player name"
+            />
+            <button
+              type="button"
+              onClick={handleCreateRoom}
+              disabled={!isConnected}
+            >
+              Create Room
+            </button>
+            <input
+              type="text"
+              value={roomIdInput}
+              onChange={(event) => setRoomIdInput(event.target.value)}
+              placeholder="Room ID"
+            />
+            <button
+              type="button"
+              onClick={handleJoinRoom}
+              disabled={!isConnected || !roomIdInput}
+            >
+              Join Room
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitPlacement}
+              disabled={!isConnected || !isInRoom}
+            >
+              Submit Placement
+            </button>
+          </div>
+          <div className="stats">
+            <Stat label="Room" value={roomId ?? "-"} />
+            <Stat label="You" value={playerId ?? "-"} />
+            <Stat label="Phase" value={roomPhase} />
+            <Stat
+              label="Players"
+              value={roomPlayers.length > 0 ? roomPlayers.length : 0}
+            />
+            <Stat
+              label="Ready"
+              value={roomPlayers.filter((p) => p.ready).length}
+            />
+          </div>
+        </section>
+      )}
       {winner && (
         <div className="winner-banner">
           Winner: {winner === "player" ? "You" : "Computer"}
@@ -366,33 +626,49 @@ function App() {
       )}
 
       <main className="layout">
-        {computer && (
+        {(computer || isMultiplayer) && (
           <section className="panel">
             <div className="panel-header">
               <h2>Enemy Waters</h2>
               <span className="turn-indicator">
-                {currentTurn === "computer" ? "Computer turn" : "Ready"}
+                {isMultiplayer
+                  ? isMyTurn
+                    ? "Your turn"
+                    : "Waiting"
+                  : currentTurn === "computer"
+                  ? "Computer turn"
+                  : "Ready"}
               </span>
             </div>
             <p className="panel-subtitle">
               Fire on the enemy grid to locate ships.
             </p>
             <div className="board">
-              {computer?.board.map((row, rowIndex) => (
-                <div className="row" key={`enemy-row-${rowIndex}`}>
-                  {row.map((cell, colIndex) => (
-                    <button
-                      key={`enemy-${getCellKey(rowIndex, colIndex)}`}
-                      type="button"
-                      className={`cell ${getCellStatus(cell, true)}`}
-                      onClick={() => handlePlayerShot(rowIndex, colIndex)}
-                      disabled={!player || winner || currentTurn !== "player"}
-                    />
-                  ))}
-                </div>
-              ))}
+              {(isMultiplayer ? createEmptyBoard() : computer?.board)?.map(
+                (row, rowIndex) => (
+                  <div className="row" key={`enemy-row-${rowIndex}`}>
+                    {row.map((cell, colIndex) => (
+                      <button
+                        key={`enemy-${getCellKey(rowIndex, colIndex)}`}
+                        type="button"
+                        className={`cell ${
+                          isMultiplayer
+                            ? getEnemyCellStatus(rowIndex, colIndex)
+                            : getCellStatus(cell, true)
+                        }`}
+                        onClick={() => handlePlayerShot(rowIndex, colIndex)}
+                        disabled={
+                          isMultiplayer
+                            ? !isInRoom || winner || !isMyTurn
+                            : !player || winner || currentTurn !== "player"
+                        }
+                      />
+                    ))}
+                  </div>
+                )
+              )}
             </div>
-            {computerStats && (
+            {computerStats && !isMultiplayer && (
               <div className="stats">
                 <Stat label="Hits" value={computerStats.hits} />
                 <Stat label="Misses" value={computerStats.misses} />
@@ -407,11 +683,10 @@ function App() {
                 <Stat label="Ships to place" value={0} />
               </div>
             )}
-            {!computerStats && (
+            {(isMultiplayer || !computerStats) && (
               <div className="stats">
-                <Stat label="Ships placed" value={0} />
-                <Stat label="Ships remaining to place" value={SHIPS.length} />
-                <Stat label="Ships hit" value={0} />
+                <Stat label="Shots" value={enemyFog.shots.length} />
+                <Stat label="Ships sunk" value={enemyFog.shipsSunk} />
               </div>
             )}
           </section>
@@ -454,7 +729,7 @@ function App() {
               </div>
             ))}
           </div>
-          {playerStats && (
+          {playerStats && !isMultiplayer && (
             <div className="stats">
               <Stat label="Hits" value={playerStats.hits} />
               <Stat label="Misses" value={playerStats.misses} />
@@ -469,14 +744,27 @@ function App() {
               <Stat label="Ships to place" value={0} />
             </div>
           )}
-          {!playerStats && (
+          {(isMultiplayer || !playerStats) && (
             <div className="stats">
-              <Stat label="Ships placed" value={currentShipIndex} />
-              <Stat label="Ships remaining to place" value={remainingToPlace} />
-              <Stat
-                label="Orientation"
-                value={orientation === "H" ? "Horizontal" : "Vertical"}
-              />
+              {isMultiplayer ? (
+                <>
+                  <Stat label="Hits taken" value={selfGrid.hits.length} />
+                  <Stat label="Misses" value={selfGrid.misses.length} />
+                  <Stat label="Ships" value={selfGrid.ships.length} />
+                </>
+              ) : (
+                <>
+                  <Stat label="Ships placed" value={currentShipIndex} />
+                  <Stat
+                    label="Ships remaining to place"
+                    value={remainingToPlace}
+                  />
+                  <Stat
+                    label="Orientation"
+                    value={orientation === "H" ? "Horizontal" : "Vertical"}
+                  />
+                </>
+              )}
             </div>
           )}
         </section>
