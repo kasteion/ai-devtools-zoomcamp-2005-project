@@ -451,9 +451,19 @@ function App() {
 
     socket.on("self_update", ({ ownGrid }) => {
       const next = ownGrid ?? {};
+      const rawHits = Array.isArray(next.hits) ? next.hits : [];
+      const rawMisses = Array.isArray(next.misses) ? next.misses : [];
+      const normalizedMisses = rawMisses.every((entry) => Array.isArray(entry))
+        ? rawMisses
+        : rawMisses.reduce((pairs, value, index) => {
+            if (index % 2 === 0) {
+              return pairs.concat([[value, rawMisses[index + 1]]]);
+            }
+            return pairs;
+          }, []);
       setSelfGrid({
-        hits: Array.isArray(next.hits) ? next.hits : [],
-        misses: Array.isArray(next.misses) ? next.misses : [],
+        hits: rawHits,
+        misses: normalizedMisses,
         ships: Array.isArray(next.ships) ? next.ships : [],
       });
     });
