@@ -189,6 +189,18 @@ function App() {
   const isMyTurn = isMultiplayer
     ? activePlayerId && playerId && activePlayerId === playerId
     : currentTurn === "player";
+  const isPlayerReady = roomPlayers.find((p) => p.playerId === playerId)?.ready;
+  const multiplayerScreen = !isMultiplayer
+    ? "local"
+    : !isConnected
+    ? "connect"
+    : !isInRoom
+    ? "lobby"
+    : roomPhase === "playing" || roomPhase === "finished"
+    ? "play"
+    : isPlayerReady
+    ? "waiting"
+    : "place";
 
   const playerStats = useMemo(
     () => (player ? calculateStats(player) : null),
@@ -561,64 +573,78 @@ function App() {
           <p className="status">{message}</p>
           {errorMessage && <p className="status">Last error: {errorMessage}</p>}
         </div>
-        <div className="controls">
-          <button
-            type="button"
-            onClick={() => setIsMultiplayer((prev) => !prev)}
-            disabled={!!player || isInRoom}
-          >
-            Mode: {isMultiplayer ? "Multiplayer" : "Local"}
-          </button>
-          <button
-            type="button"
-            onClick={handleToggleOrientation}
-            disabled={!!player}
-          >
-            Orientation: {orientation === "H" ? "Horizontal" : "Vertical"}
-          </button>
-          <button type="button" onClick={handleAutoPlace} disabled={!!player}>
-            Auto-place Fleet
-          </button>
-          <button type="button" onClick={startGame} disabled={!!player}>
-            Start Battle
-          </button>
-          <button type="button" onClick={handleReset}>
-            Reset Game
-          </button>
-        </div>
-      </header>
-
-      {isMultiplayer && (
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Multiplayer Controls</h2>
-            <span className="turn-indicator">
-              {isConnected ? "Connected" : "Offline"}
-            </span>
-          </div>
-          <p className="panel-subtitle">
-            Connect to the server, create or join a room, then submit your
-            placement.
-          </p>
+        {!isMultiplayer ? (
           <div className="controls">
             <button
               type="button"
-              onClick={handleConnect}
-              disabled={isConnected}
+              onClick={() => setIsMultiplayer((prev) => !prev)}
+              disabled={!!player || isInRoom}
             >
-              Connect
+              Mode: {isMultiplayer ? "Multiplayer" : "Local"}
             </button>
+            <button
+              type="button"
+              onClick={handleToggleOrientation}
+              disabled={!!player}
+            >
+              Orientation: {orientation === "H" ? "Horizontal" : "Vertical"}
+            </button>
+            <button type="button" onClick={handleAutoPlace} disabled={!!player}>
+              Auto-place Fleet
+            </button>
+            <button type="button" onClick={startGame} disabled={!!player}>
+              Start Battle
+            </button>
+            <button type="button" onClick={handleReset}>
+              Reset Game
+            </button>
+          </div>
+        ) : (
+          <div className="controls">
+            <button
+              type="button"
+              onClick={() => setIsMultiplayer((prev) => !prev)}
+              disabled={!!player || isInRoom || isConnected}
+            >
+              Mode: {isMultiplayer ? "Multiplayer" : "Local"}
+            </button>
+            <button type="button" onClick={handleReset}>
+              Reset Game
+            </button>
+          </div>
+        )}
+      </header>
+
+      {isMultiplayer && multiplayerScreen === "connect" && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Connect</h2>
+            <span className="turn-indicator">Step 1</span>
+          </div>
+          <p className="panel-subtitle">Enter your name and connect.</p>
+          <div className="controls">
             <input
               type="text"
               value={playerName}
               onChange={(event) => setPlayerName(event.target.value)}
               placeholder="Player name"
             />
-            <button
-              type="button"
-              onClick={handleCreateRoom}
-              disabled={!isConnected}
-            >
+            <button type="button" onClick={handleConnect}>
+              Connect
+            </button>
+          </div>
+        </section>
+      )}
+
+      {isMultiplayer && multiplayerScreen === "lobby" && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Room Lobby</h2>
+            <span className="turn-indicator">Step 2</span>
+          </div>
+          <p className="panel-subtitle">Create a new room or join one.</p>
+          <div className="controls">
+            <button type="button" onClick={handleCreateRoom}>
               Create Room
             </button>
             <input
@@ -627,29 +653,50 @@ function App() {
               onChange={(event) => setRoomIdInput(event.target.value)}
               placeholder="Room ID"
             />
-            <button
-              type="button"
-              onClick={handleJoinRoom}
-              disabled={!isConnected || !roomIdInput}
-            >
+            <button type="button" onClick={handleJoinRoom}>
               Join Room
+            </button>
+          </div>
+        </section>
+      )}
+
+      {isMultiplayer && multiplayerScreen === "place" && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Place Your Fleet</h2>
+            <span className="turn-indicator">Step 3</span>
+          </div>
+          <p className="panel-subtitle">
+            Place all ships, then submit your placement.
+          </p>
+          <div className="controls">
+            <button type="button" onClick={handleToggleOrientation}>
+              Orientation: {orientation === "H" ? "Horizontal" : "Vertical"}
+            </button>
+            <button type="button" onClick={handleAutoPlace}>
+              Auto-place Fleet
             </button>
             <button
               type="button"
               onClick={handleSubmitPlacement}
-              disabled={!isConnected || !isInRoom}
+              disabled={!isReadyToSubmit}
             >
               Submit Placement
             </button>
           </div>
+        </section>
+      )}
+
+      {isMultiplayer && multiplayerScreen === "waiting" && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Waiting Room</h2>
+            <span className="turn-indicator">Step 4</span>
+          </div>
+          <p className="panel-subtitle">Waiting for opponent to place ships.</p>
           <div className="stats">
             <Stat label="Room" value={roomId ?? "-"} />
-            <Stat label="You" value={playerId ?? "-"} />
-            <Stat label="Phase" value={roomPhase} />
-            <Stat
-              label="Players"
-              value={roomPlayers.length > 0 ? roomPlayers.length : 0}
-            />
+            <Stat label="Players" value={roomPlayers.length} />
             <Stat
               label="Ready"
               value={roomPlayers.filter((p) => p.ready).length}
@@ -663,151 +710,197 @@ function App() {
         </div>
       )}
 
-      <main className="layout">
-        {(computer || isMultiplayer) && (
+      {!isMultiplayer && (
+        <main className="layout">
+          {computer && (
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Enemy Waters</h2>
+                <span className="turn-indicator">
+                  {currentTurn === "computer" ? "Computer turn" : "Ready"}
+                </span>
+              </div>
+              <p className="panel-subtitle">
+                Fire on the enemy grid to locate ships.
+              </p>
+              <div className="board">
+                {computer?.board.map((row, rowIndex) => (
+                  <div className="row" key={`enemy-row-${rowIndex}`}>
+                    {row.map((cell, colIndex) => (
+                      <button
+                        key={`enemy-${getCellKey(rowIndex, colIndex)}`}
+                        type="button"
+                        className={`cell ${getCellStatus(cell, true)}`}
+                        onClick={() => handlePlayerShot(rowIndex, colIndex)}
+                        disabled={!player || winner || currentTurn !== "player"}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              {computerStats && (
+                <div className="stats">
+                  <Stat label="Hits" value={computerStats.hits} />
+                  <Stat label="Misses" value={computerStats.misses} />
+                  <Stat label="Ships hit" value={computerStats.shipsHit} />
+                  <Stat label="Ships sunk" value={computerStats.shipsSunk} />
+                  <Stat
+                    label="Ships remaining"
+                    value={computerStats.shipsRemaining}
+                  />
+                  <Stat
+                    label="Ships placed"
+                    value={computerStats.shipsPlaced}
+                  />
+                  <Stat label="Turns taken" value={computer.turns} />
+                  <Stat label="Ships to place" value={0} />
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Your Fleet</h2>
+              <span className="turn-indicator">
+                {currentTurn === "player" ? "Your turn" : "Waiting"}
+              </span>
+            </div>
+
+            <p className="panel-subtitle">
+              {player
+                ? "Defend your ships and track incoming fire."
+                : `Place ${remainingToPlace} ship${
+                    remainingToPlace === 1 ? "" : "s"
+                  } (${
+                    currentShipIndex < SHIPS.length
+                      ? SHIPS[currentShipIndex].name
+                      : "ready"
+                  })`}
+            </p>
+            <div className="board">
+              {placement.board.map((row, rowIndex) => (
+                <div className="row" key={`player-row-${rowIndex}`}>
+                  {row.map((cell, colIndex) => (
+                    <button
+                      key={`player-${getCellKey(rowIndex, colIndex)}`}
+                      type="button"
+                      className={`cell ${getSelfCellStatus(
+                        rowIndex,
+                        colIndex,
+                        player ? player.board[rowIndex][colIndex] : cell
+                      )}`}
+                      onClick={() => handleManualPlacement(rowIndex, colIndex)}
+                      disabled={!!player}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            {playerStats && (
+              <div className="stats">
+                <Stat label="Hits" value={playerStats.hits} />
+                <Stat label="Misses" value={playerStats.misses} />
+                <Stat label="Ships hit" value={playerStats.shipsHit} />
+                <Stat label="Ships sunk" value={playerStats.shipsSunk} />
+                <Stat
+                  label="Ships remaining"
+                  value={playerStats.shipsRemaining}
+                />
+                <Stat label="Ships placed" value={playerStats.shipsPlaced} />
+                <Stat label="Turns taken" value={player.turns} />
+                <Stat label="Ships to place" value={0} />
+              </div>
+            )}
+            {!playerStats && (
+              <div className="stats">
+                <Stat label="Ships placed" value={currentShipIndex} />
+                <Stat
+                  label="Ships remaining to place"
+                  value={remainingToPlace}
+                />
+                <Stat
+                  label="Orientation"
+                  value={orientation === "H" ? "Horizontal" : "Vertical"}
+                />
+              </div>
+            )}
+          </section>
+        </main>
+      )}
+
+      {isMultiplayer && multiplayerScreen === "play" && (
+        <main className="layout">
           <section className="panel">
             <div className="panel-header">
               <h2>Enemy Waters</h2>
               <span className="turn-indicator">
-                {isMultiplayer
-                  ? isMyTurn
-                    ? "Your turn"
-                    : "Waiting"
-                  : currentTurn === "computer"
-                  ? "Computer turn"
-                  : "Ready"}
+                {isMyTurn ? "Your turn" : "Waiting"}
               </span>
             </div>
             <p className="panel-subtitle">
               Fire on the enemy grid to locate ships.
             </p>
             <div className="board">
-              {(isMultiplayer ? createEmptyBoard() : computer?.board)?.map(
-                (row, rowIndex) => (
-                  <div className="row" key={`enemy-row-${rowIndex}`}>
-                    {row.map((cell, colIndex) => (
-                      <button
-                        key={`enemy-${getCellKey(rowIndex, colIndex)}`}
-                        type="button"
-                        className={`cell ${
-                          isMultiplayer
-                            ? getEnemyCellStatus(rowIndex, colIndex)
-                            : getCellStatus(cell, true)
-                        }`}
-                        onClick={() => handlePlayerShot(rowIndex, colIndex)}
-                        disabled={
-                          isMultiplayer
-                            ? !isInRoom || winner || !isMyTurn
-                            : !player || winner || currentTurn !== "player"
-                        }
-                      />
-                    ))}
-                  </div>
-                )
-              )}
+              {createEmptyBoard().map((row, rowIndex) => (
+                <div className="row" key={`enemy-row-${rowIndex}`}>
+                  {row.map((cell, colIndex) => (
+                    <button
+                      key={`enemy-${getCellKey(rowIndex, colIndex)}`}
+                      type="button"
+                      className={`cell ${getEnemyCellStatus(
+                        rowIndex,
+                        colIndex
+                      )}`}
+                      onClick={() => handlePlayerShot(rowIndex, colIndex)}
+                      disabled={!isInRoom || winner || !isMyTurn}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
-            {computerStats && !isMultiplayer && (
-              <div className="stats">
-                <Stat label="Hits" value={computerStats.hits} />
-                <Stat label="Misses" value={computerStats.misses} />
-                <Stat label="Ships hit" value={computerStats.shipsHit} />
-                <Stat label="Ships sunk" value={computerStats.shipsSunk} />
-                <Stat
-                  label="Ships remaining"
-                  value={computerStats.shipsRemaining}
-                />
-                <Stat label="Ships placed" value={computerStats.shipsPlaced} />
-                <Stat label="Turns taken" value={computer.turns} />
-                <Stat label="Ships to place" value={0} />
-              </div>
-            )}
-            {(isMultiplayer || !computerStats) && (
-              <div className="stats">
-                <Stat label="Shots" value={enemyFog.shots.length} />
-                <Stat label="Ships sunk" value={enemyFog.shipsSunk} />
-              </div>
-            )}
+            <div className="stats">
+              <Stat label="Shots" value={enemyFog.shots.length} />
+              <Stat label="Ships sunk" value={enemyFog.shipsSunk} />
+            </div>
           </section>
-        )}
 
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Your Fleet</h2>
-            <span className="turn-indicator">
-              {currentTurn === "player" ? "Your turn" : "Waiting"}
-            </span>
-          </div>
-
-          <p className="panel-subtitle">
-            {player
-              ? "Defend your ships and track incoming fire."
-              : `Place ${remainingToPlace} ship${
-                  remainingToPlace === 1 ? "" : "s"
-                } (${
-                  currentShipIndex < SHIPS.length
-                    ? SHIPS[currentShipIndex].name
-                    : "ready"
-                })`}
-          </p>
-          <div className="board">
-            {placement.board.map((row, rowIndex) => (
-              <div className="row" key={`player-row-${rowIndex}`}>
-                {row.map((cell, colIndex) => (
-                  <button
-                    key={`player-${getCellKey(rowIndex, colIndex)}`}
-                    type="button"
-                    className={`cell ${getSelfCellStatus(
-                      rowIndex,
-                      colIndex,
-                      player ? player.board[rowIndex][colIndex] : cell
-                    )}`}
-                    onClick={() => handleManualPlacement(rowIndex, colIndex)}
-                    disabled={!!player}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-          {playerStats && !isMultiplayer && (
-            <div className="stats">
-              <Stat label="Hits" value={playerStats.hits} />
-              <Stat label="Misses" value={playerStats.misses} />
-              <Stat label="Ships hit" value={playerStats.shipsHit} />
-              <Stat label="Ships sunk" value={playerStats.shipsSunk} />
-              <Stat
-                label="Ships remaining"
-                value={playerStats.shipsRemaining}
-              />
-              <Stat label="Ships placed" value={playerStats.shipsPlaced} />
-              <Stat label="Turns taken" value={player.turns} />
-              <Stat label="Ships to place" value={0} />
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Your Fleet</h2>
+              <span className="turn-indicator">
+                {isMyTurn ? "Your" : "Their"} turn
+              </span>
             </div>
-          )}
-          {(isMultiplayer || !playerStats) && (
-            <div className="stats">
-              {isMultiplayer ? (
-                <>
-                  <Stat label="Hits taken" value={selfGrid.hits.length} />
-                  <Stat label="Misses" value={selfGrid.misses.length} />
-                  <Stat label="Ships" value={selfGrid.ships.length} />
-                </>
-              ) : (
-                <>
-                  <Stat label="Ships placed" value={currentShipIndex} />
-                  <Stat
-                    label="Ships remaining to place"
-                    value={remainingToPlace}
-                  />
-                  <Stat
-                    label="Orientation"
-                    value={orientation === "H" ? "Horizontal" : "Vertical"}
-                  />
-                </>
-              )}
+            <p className="panel-subtitle">
+              Defend your ships and track incoming fire.
+            </p>
+            <div className="board">
+              {placement.board.map((row, rowIndex) => (
+                <div className="row" key={`player-row-${rowIndex}`}>
+                  {row.map((cell, colIndex) => (
+                    <button
+                      key={`player-${getCellKey(rowIndex, colIndex)}`}
+                      type="button"
+                      className={`cell ${getSelfCellStatus(
+                        rowIndex,
+                        colIndex,
+                        cell
+                      )}`}
+                      disabled
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
-          )}
-        </section>
-      </main>
+            <div className="stats">
+              <Stat label="Hits taken" value={selfGrid.hits.length} />
+              <Stat label="Misses" value={selfGrid.misses.length} />
+              <Stat label="Ships" value={selfGrid.ships.length} />
+            </div>
+          </section>
+        </main>
+      )}
 
       {player && computer && currentTurn === "computer" && !winner && (
         <div className="computer-turn">
