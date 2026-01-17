@@ -83,6 +83,13 @@ const sendRoomState = (room) => {
 };
 
 io.on("connection", (socket) => {
+  socket.on("rooms_please", ({}) => {
+    const availableRooms = Array.from(rooms, ([, r]) => ({ ...r })).filter(
+      (r) => r.players.length < 2
+    );
+    console.log(availableRooms);
+  });
+
   socket.on("create_room", ({ playerName }) => {
     const roomId = `room_${Math.random().toString(36).slice(2, 8)}`;
     const room = createRoom(roomId);
