@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import {
+  uniqueNamesGenerator,
+  adjectives,
+  colors,
+  animals,
+} from "unique-names-generator";
+
+import ConnectScreen from "./screens/connect";
+import LobbyScreen from "./screens/lobby";
 import "./App.css";
+import PlaceScreen from "./screens/place";
+import WaitingScreen from "./screens/waiting";
+import PlayScreen from "./screens/play";
+import { Stat } from "./components";
 
 const BOARD_SIZE = 10;
 const SHIPS = [
@@ -168,7 +181,12 @@ function App() {
   const [message, setMessage] = useState("Place your fleet to start the game.");
 
   const [isMultiplayer, setIsMultiplayer] = useState(true);
-  const [playerName, setPlayerName] = useState("Player");
+  const [playerName, setPlayerName] = useState(
+    uniqueNamesGenerator({
+      dictionaries: [adjectives, colors, animals],
+      separator: " ",
+    })
+  );
   const [roomIdInput, setRoomIdInput] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
@@ -400,6 +418,7 @@ function App() {
     socket.on("connect", () => {
       setIsConnected(true);
       setMessage("Connected. Create or join a room.");
+      socket.emit("rooms_please", {});
     });
 
     socket.on("disconnect", () => {
@@ -616,94 +635,36 @@ function App() {
       </header>
 
       {isMultiplayer && multiplayerScreen === "connect" && (
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Connect</h2>
-            <span className="turn-indicator">Step 1</span>
-          </div>
-          <p className="panel-subtitle">Enter your name and connect.</p>
-          <div className="controls">
-            <input
-              type="text"
-              value={playerName}
-              onChange={(event) => setPlayerName(event.target.value)}
-              placeholder="Player name"
-            />
-            <button type="button" onClick={handleConnect}>
-              Connect
-            </button>
-          </div>
-        </section>
+        <ConnectScreen
+          playerName={playerName}
+          setPlayerName={setPlayerName}
+          handleConnect={handleConnect}
+        />
       )}
 
       {isMultiplayer && multiplayerScreen === "lobby" && (
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Room Lobby</h2>
-            <span className="turn-indicator">Step 2</span>
-          </div>
-          <p className="panel-subtitle">Create a new room or join one.</p>
-          <div className="controls">
-            <button type="button" onClick={handleCreateRoom}>
-              Create Room
-            </button>
-            <input
-              type="text"
-              value={roomIdInput}
-              onChange={(event) => setRoomIdInput(event.target.value)}
-              placeholder="Room ID"
-            />
-            <button type="button" onClick={handleJoinRoom}>
-              Join Room
-            </button>
-          </div>
-        </section>
+        <LobbyScreen
+          handleCreateRoom={handleCreateRoom}
+          roomIdInput={roomIdInput}
+          setRoomIdInput={setRoomIdInput}
+          handleJoinRoom={handleJoinRoom}
+        />
       )}
 
       {isMultiplayer && multiplayerScreen === "place" && (
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Place Your Fleet</h2>
-            <span className="turn-indicator">Step 3</span>
-          </div>
-          <p className="panel-subtitle">
-            Place all ships, then submit your placement.
-          </p>
-          <div className="controls">
-            <button type="button" onClick={handleToggleOrientation}>
-              Orientation: {orientation === "H" ? "Horizontal" : "Vertical"}
-            </button>
-            <button type="button" onClick={handleAutoPlace}>
-              Auto-place Fleet
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmitPlacement}
-              disabled={!isReadyToSubmit}
-            >
-              Submit Placement
-            </button>
-          </div>
-        </section>
+        <PlaceScreen
+          handleToggleOrientation={handleToggleOrientation}
+          orientation={orientation}
+          handleAutoPlace={handleAutoPlace}
+          handleSubmitPlacement={handleSubmitPlacement}
+          isReadyToSubmit={isReadyToSubmit}
+        />
       )}
 
       {isMultiplayer && multiplayerScreen === "waiting" && (
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Waiting Room</h2>
-            <span className="turn-indicator">Step 4</span>
-          </div>
-          <p className="panel-subtitle">Waiting for opponent to place ships.</p>
-          <div className="stats">
-            <Stat label="Room" value={roomId ?? "-"} />
-            <Stat label="Players" value={roomPlayers.length} />
-            <Stat
-              label="Ready"
-              value={roomPlayers.filter((p) => p.ready).length}
-            />
-          </div>
-        </section>
+        <WaitingScreen roomId={roomId} roomPlayers={roomPlayers} />
       )}
+
       {winner && (
         <div className="winner-banner">
           Winner: {winner === "player" ? "You" : "Computer"}
@@ -830,76 +791,19 @@ function App() {
       )}
 
       {isMultiplayer && multiplayerScreen === "play" && (
-        <main className="layout">
-          <section className="panel">
-            <div className="panel-header">
-              <h2>Enemy Waters</h2>
-              <span className="turn-indicator">
-                {isMyTurn ? "Your turn" : "Waiting"}
-              </span>
-            </div>
-            <p className="panel-subtitle">
-              Fire on the enemy grid to locate ships.
-            </p>
-            <div className="board">
-              {createEmptyBoard().map((row, rowIndex) => (
-                <div className="row" key={`enemy-row-${rowIndex}`}>
-                  {row.map((cell, colIndex) => (
-                    <button
-                      key={`enemy-${getCellKey(rowIndex, colIndex)}`}
-                      type="button"
-                      className={`cell ${getEnemyCellStatus(
-                        rowIndex,
-                        colIndex
-                      )}`}
-                      onClick={() => handlePlayerShot(rowIndex, colIndex)}
-                      disabled={!isInRoom || winner || !isMyTurn}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div className="stats">
-              <Stat label="Shots" value={enemyFog.shots.length} />
-              <Stat label="Ships sunk" value={enemyFog.shipsSunk} />
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-header">
-              <h2>Your Fleet</h2>
-              <span className="turn-indicator">
-                {isMyTurn ? "Your" : "Their"} turn
-              </span>
-            </div>
-            <p className="panel-subtitle">
-              Defend your ships and track incoming fire.
-            </p>
-            <div className="board">
-              {placement.board.map((row, rowIndex) => (
-                <div className="row" key={`player-row-${rowIndex}`}>
-                  {row.map((cell, colIndex) => (
-                    <button
-                      key={`player-${getCellKey(rowIndex, colIndex)}`}
-                      type="button"
-                      className={`cell ${getSelfCellStatus(
-                        rowIndex,
-                        colIndex,
-                        cell
-                      )}`}
-                      disabled
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div className="stats">
-              <Stat label="Hits taken" value={selfGrid.hits.length} />
-              <Stat label="Misses" value={selfGrid.misses.length} />
-              <Stat label="Ships" value={selfGrid.ships.length} />
-            </div>
-          </section>
-        </main>
+        <PlayScreen
+          isMyTurn={isMyTurn}
+          createEmptyBoard={createEmptyBoard}
+          getCellKey={getCellKey}
+          getEnemyCellStatus={getEnemyCellStatus}
+          handlePlayerShot={handlePlayerShot}
+          isInRoom={isInRoom}
+          winner={winner}
+          enemyFog={enemyFog}
+          placement={placement}
+          getSelfCellStatus={getSelfCellStatus}
+          selfGrid={selfGrid}
+        />
       )}
 
       {player && computer && currentTurn === "computer" && !winner && (
@@ -907,15 +811,6 @@ function App() {
           <span className="status">Computer is firing...</span>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="stat">
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
     </div>
   );
 }
