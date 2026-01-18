@@ -79,6 +79,7 @@ h1 {
 }
 
 .board {
+  margin-top: 2rem;
   display: grid;
   gap: 0.3rem;
   align-items: center;

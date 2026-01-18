@@ -199,6 +199,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
 
   const socketRef = useRef(null);
+  const playerIdRef = useRef(null);
 
   const remainingToPlace = SHIPS.length - currentShipIndex;
   const isInRoom = Boolean(roomId && playerId);
@@ -431,25 +432,37 @@ function App() {
       setPlayerId(null);
     });
 
-    socket.on("room_created", ({ roomId: createdRoomId, playerId }) => {
-      setRoomId(createdRoomId);
-      setPlayerId(playerId);
-      setMessage(`Room created (${createdRoomId}). Awaiting opponent.`);
-    });
+    socket.on(
+      "room_created",
+      ({ roomId: newRoomId, playerId: newPlayerId } = {}) => {
+        if (!newRoomId || !newPlayerId) {
+          setErrorMessage("ROOM_CREATE_FAILED");
+          setMessage("Error: ROOM_CREATE_FAILED");
+          return;
+        }
+        setRoomId(newRoomId);
+        setPlayerId(newPlayerId);
+        playerIdRef.current = newPlayerId;
+        setRoomPhase("placing");
+        setMessage(`Room created (${newRoomId}). Awaiting opponent.`);
+      }
+    );
 
     socket.on("room_joined", ({ roomId: joinedRoomId, playerId }) => {
       setRoomId(joinedRoomId);
       setPlayerId(playerId);
+      playerIdRef.current = playerId;
       setMessage(`Joined room ${joinedRoomId}. Place your fleet.`);
     });
 
     socket.on("room_state", (state) => {
+      const currentPlayerId = playerIdRef.current;
       setRoomPhase(state.phase);
       setActivePlayerId(state.activePlayerId);
       setRoomPlayers(state.players ?? []);
       if (state.phase === "playing") {
         setMessage(
-          state.activePlayerId === playerId
+          state.activePlayerId === currentPlayerId
             ? "Your turn. Fire on the enemy grid."
             : "Opponent turn. Waiting..."
         );
@@ -500,7 +513,8 @@ function App() {
     });
 
     socket.on("game_over", ({ winnerId, reason }) => {
-      const youWon = winnerId && winnerId === playerId;
+      const currentPlayerId = playerIdRef.current;
+      const youWon = winnerId && winnerId === currentPlayerId;
       setWinner(youWon ? "player" : "computer");
       setMessage(
         reason === "opponent_left"
@@ -658,6 +672,9 @@ function App() {
           handleAutoPlace={handleAutoPlace}
           handleSubmitPlacement={handleSubmitPlacement}
           isReadyToSubmit={isReadyToSubmit}
+          placement={placement}
+          getCellKey={getCellKey}
+          handleManualPlacement={handleManualPlacement}
         />
       )}
 

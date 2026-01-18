@@ -146,6 +146,7 @@ io.on("connection", (socket) => {
       playerId,
       readyCount: room.players.filter((p) => p.ready).length,
     });
+    if (!room.activePlayerId) room.activePlayerId = player.playerId;
     sendRoomState(room);
     if (room.players.length === 2 && room.players.every((p) => p.ready)) {
       room.phase = "playing";

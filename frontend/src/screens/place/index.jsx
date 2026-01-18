@@ -4,6 +4,9 @@ const PlaceScreen = ({
   handleAutoPlace,
   handleSubmitPlacement,
   isReadyToSubmit,
+  placement,
+  getCellKey,
+  handleManualPlacement,
 }) => {
   return (
     <section className="panel">
@@ -28,6 +31,20 @@ const PlaceScreen = ({
         >
           Submit Placement
         </button>
+      </div>
+      <div className="board">
+        {placement.board.map((row, rowIndex) => (
+          <div className="row" key={`player-row-${rowIndex}`}>
+            {row.map((cell, colIndex) => (
+              <button
+                key={`player-${getCellKey(rowIndex, colIndex)}`}
+                type="button"
+                className={`cell ${cell.shipId !== null ? "ship" : "empty"}`}
+                onClick={() => handleManualPlacement(rowIndex, colIndex)}
+              />
+            ))}
+          </div>
+        ))}
       </div>
     </section>
   );
