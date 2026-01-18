@@ -16,6 +16,14 @@ import PlayScreen from "./screens/play";
 import { Stat } from "./components";
 import AuthScreen from "./screens/auth";
 import { signIn, signUp } from "./services/authApi";
+import StatsScreen from "./screens/stats";
+import LeaderboardScreen from "./screens/leaderboard";
+import {
+  fetchUserStats,
+  createUserStats,
+  updateUserStats,
+  fetchLeaderboard,
+} from "./services/statsApi";
 import {
   BOARD_SIZE,
   SHIPS,
@@ -49,6 +57,14 @@ function App() {
   const [authMode, setAuthMode] = useState("signin");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [statsView, setStatsView] = useState(false);
+  const [leaderboardView, setLeaderboardView] = useState(false);
+  const [userStats, setUserStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(null);
+  const [leaderboardEntries, setLeaderboardEntries] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState(null);
   const [placement, setPlacement] = useState(initialPlacement);
   const [currentShipIndex, setCurrentShipIndex] = useState(0);
   const [orientation, setOrientation] = useState("H");
@@ -80,6 +96,7 @@ function App() {
   const socketRef = useRef(null);
   const playerIdRef = useRef(null);
   const detachSocketHandlersRef = useRef(null);
+  const statsPostedRef = useRef(false);
 
   const isAuthenticated = Boolean(authToken);
 
@@ -271,6 +288,51 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [player, computer, currentTurn, winner, isMultiplayer]);
 
+  const loadUserStats = async () => {
+    if (!currentUser?.id || !authToken) return;
+    try {
+      setStatsLoading(true);
+      setStatsError(null);
+      const response = await fetchUserStats({
+        userId: currentUser.id,
+        token: authToken,
+      });
+      setUserStats(response?.stats ?? null);
+    } catch (err) {
+      if (err?.status === 404) {
+        setUserStats(null);
+        return;
+      }
+      setStatsError(err.message || "STATS_LOAD_FAILED");
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const loadLeaderboard = async () => {
+    if (!authToken) return;
+    try {
+      setLeaderboardLoading(true);
+      setLeaderboardError(null);
+      const response = await fetchLeaderboard({ token: authToken, limit: 10 });
+      setLeaderboardEntries(response?.leaderboard ?? []);
+    } catch (err) {
+      setLeaderboardError(err.message || "LEADERBOARD_LOAD_FAILED");
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.id) return;
+    loadUserStats();
+  }, [isAuthenticated, currentUser?.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadLeaderboard();
+  }, [isAuthenticated]);
+
   const handleAuthSuccess = (response) => {
     const { token, user } = response ?? {};
     if (!token || !user) {
@@ -317,7 +379,69 @@ function App() {
     handleReset();
   };
 
+  const handleStatsUpdate = async ({ result, hits, misses, shotsFired }) => {
+    if (!isMultiplayer || !currentUser?.id || !authToken) return;
+    const baseStats = userStats ?? {
+      gamesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      hits: 0,
+      misses: 0,
+      shotsFired: 0,
+    };
+    const nextStats = {
+      gamesPlayed: baseStats.gamesPlayed + 1,
+      wins: baseStats.wins + (result === "win" ? 1 : 0),
+      losses: baseStats.losses + (result === "lose" ? 1 : 0),
+      hits: baseStats.hits + hits,
+      misses: baseStats.misses + misses,
+      shotsFired: baseStats.shotsFired + shotsFired,
+    };
+
+    try {
+      if (!userStats) {
+        const response = await createUserStats({
+          userId: currentUser.id,
+          token: authToken,
+          stats: nextStats,
+        });
+        setUserStats(response?.stats ?? nextStats);
+      } else {
+        const response = await updateUserStats({
+          userId: currentUser.id,
+          token: authToken,
+          stats: nextStats,
+        });
+        setUserStats(response?.stats ?? nextStats);
+      }
+    } catch (err) {
+      setStatsError(err.message || "STATS_UPDATE_FAILED");
+    }
+  };
+
+  useEffect(() => {
+    if (!winner || !isMultiplayer) return;
+    if (statsPostedRef.current) return;
+    statsPostedRef.current = true;
+    const totalHits = Array.isArray(enemyFog.shots)
+      ? enemyFog.shots.filter((shot) => shot.result === "hit").length
+      : 0;
+    const totalMisses = Array.isArray(enemyFog.shots)
+      ? enemyFog.shots.filter((shot) => shot.result === "miss").length
+      : 0;
+    const totalShots = totalHits + totalMisses;
+    handleStatsUpdate({
+      result: winner === "player" ? "win" : "lose",
+      hits: totalHits,
+      misses: totalMisses,
+      shotsFired: totalShots,
+    });
+  }, [winner, isMultiplayer, enemyFog.shots]);
+
   const handleReset = () => {
+    statsPostedRef.current = false;
+    setStatsView(false);
+    setLeaderboardView(false);
     setIsMultiplayer(true);
     setIsConnected(false);
     setPlacement(createEmptyPlacement());
@@ -376,6 +500,7 @@ function App() {
           setRoomId(newRoomId);
           setPlayerId(newPlayerId);
           playerIdRef.current = newPlayerId;
+          statsPostedRef.current = false;
           setRoomPhase("placing");
           setMessage(`Room created (${newRoomId}). Awaiting opponent.`);
         },
@@ -383,6 +508,7 @@ function App() {
           setRoomId(joinedRoomId);
           setPlayerId(playerId);
           playerIdRef.current = playerId;
+          statsPostedRef.current = false;
           setMessage(`Joined room ${joinedRoomId}. Place your fleet.`);
         },
         onRoomState: (state) => {
@@ -585,6 +711,15 @@ function App() {
             <button type="button" onClick={handleReset}>
               Reset Game
             </button>
+            <button type="button" onClick={() => setStatsView((prev) => !prev)}>
+              {statsView ? "Back to game" : "View stats"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaderboardView((prev) => !prev)}
+            >
+              {leaderboardView ? "Back to game" : "Leaderboard"}
+            </button>
             <button type="button" onClick={handleSignOut}>
               Sign out
             </button>
@@ -601,6 +736,15 @@ function App() {
             <button type="button" onClick={handleReset}>
               Reset Game
             </button>
+            <button type="button" onClick={() => setStatsView((prev) => !prev)}>
+              {statsView ? "Back to game" : "View stats"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaderboardView((prev) => !prev)}
+            >
+              {leaderboardView ? "Back to game" : "Leaderboard"}
+            </button>
             <button type="button" onClick={handleSignOut}>
               Sign out
             </button>
@@ -608,40 +752,70 @@ function App() {
         )}
       </header>
 
-      {isMultiplayer && multiplayerScreen === "connect" && (
-        <ConnectScreen
-          playerName={playerName}
-          setPlayerName={setPlayerName}
-          handleConnect={handleConnect}
+      {statsView && (
+        <StatsScreen
+          stats={userStats}
+          loading={statsLoading}
+          error={statsError}
+          onRefresh={loadUserStats}
         />
       )}
 
-      {isMultiplayer && multiplayerScreen === "lobby" && (
-        <LobbyScreen
-          handleCreateRoom={handleCreateRoom}
-          handleJoinRoom={handleJoinRoom}
-          availableRooms={availableRooms}
+      {leaderboardView && (
+        <LeaderboardScreen
+          entries={leaderboardEntries}
+          loading={leaderboardLoading}
+          error={leaderboardError}
+          onRefresh={loadLeaderboard}
         />
       )}
 
-      {isMultiplayer && multiplayerScreen === "place" && (
-        <PlaceScreen
-          handleToggleOrientation={handleToggleOrientation}
-          orientation={orientation}
-          handleAutoPlace={handleAutoPlace}
-          handleSubmitPlacement={handleSubmitPlacement}
-          isReadyToSubmit={isReadyToSubmit}
-          placement={placement}
-          getCellKey={getCellKey}
-          handleManualPlacement={handleManualPlacement}
-        />
-      )}
+      {!statsView &&
+        !leaderboardView &&
+        isMultiplayer &&
+        multiplayerScreen === "connect" && (
+          <ConnectScreen
+            playerName={playerName}
+            setPlayerName={setPlayerName}
+            handleConnect={handleConnect}
+          />
+        )}
 
-      {isMultiplayer && multiplayerScreen === "waiting" && (
-        <WaitingScreen roomId={roomId} roomPlayers={roomPlayers} />
-      )}
+      {!statsView &&
+        !leaderboardView &&
+        isMultiplayer &&
+        multiplayerScreen === "lobby" && (
+          <LobbyScreen
+            handleCreateRoom={handleCreateRoom}
+            handleJoinRoom={handleJoinRoom}
+            availableRooms={availableRooms}
+          />
+        )}
 
-      {winner && (
+      {!statsView &&
+        !leaderboardView &&
+        isMultiplayer &&
+        multiplayerScreen === "place" && (
+          <PlaceScreen
+            handleToggleOrientation={handleToggleOrientation}
+            orientation={orientation}
+            handleAutoPlace={handleAutoPlace}
+            handleSubmitPlacement={handleSubmitPlacement}
+            isReadyToSubmit={isReadyToSubmit}
+            placement={placement}
+            getCellKey={getCellKey}
+            handleManualPlacement={handleManualPlacement}
+          />
+        )}
+
+      {!statsView &&
+        !leaderboardView &&
+        isMultiplayer &&
+        multiplayerScreen === "waiting" && (
+          <WaitingScreen roomId={roomId} roomPlayers={roomPlayers} />
+        )}
+
+      {!statsView && !leaderboardView && winner && (
         <div
           className={`result-banner ${
             winner === "player" ? "result-banner--win" : "result-banner--lose"
@@ -770,21 +944,24 @@ function App() {
         </main>
       )}
 
-      {isMultiplayer && multiplayerScreen === "play" && (
-        <PlayScreen
-          isMyTurn={isMyTurn}
-          createEmptyBoard={createEmptyBoard}
-          getCellKey={getCellKey}
-          getEnemyCellStatus={getEnemyCellStatus}
-          handlePlayerShot={handlePlayerShot}
-          isInRoom={isInRoom}
-          winner={winner}
-          enemyFog={enemyFog}
-          placement={placement}
-          getSelfCellStatus={getSelfCellStatus}
-          selfGrid={selfGrid}
-        />
-      )}
+      {!statsView &&
+        !leaderboardView &&
+        isMultiplayer &&
+        multiplayerScreen === "play" && (
+          <PlayScreen
+            isMyTurn={isMyTurn}
+            createEmptyBoard={createEmptyBoard}
+            getCellKey={getCellKey}
+            getEnemyCellStatus={getEnemyCellStatus}
+            handlePlayerShot={handlePlayerShot}
+            isInRoom={isInRoom}
+            winner={winner}
+            enemyFog={enemyFog}
+            placement={placement}
+            getSelfCellStatus={getSelfCellStatus}
+            selfGrid={selfGrid}
+          />
+        )}
 
       {player && computer && currentTurn === "computer" && !winner && (
         <div className="computer-turn">

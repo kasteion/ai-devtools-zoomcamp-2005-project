@@ -66,6 +66,35 @@ h1 {
   text-align: center;
 }
 
+.leaderboard {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(12, 22, 44, 0.8);
+  border: 1px solid rgba(120, 160, 220, 0.15);
+}
+
+.leaderboard-rank {
+  font-weight: 700;
+  color: #c3d6ff;
+}
+
+.leaderboard-name {
+  color: #e7efff;
+}
+
+.leaderboard-wins {
+  color: #9fb0c8;
+}
+
 .layout {
   display: flex;
   flex-direction: column;
