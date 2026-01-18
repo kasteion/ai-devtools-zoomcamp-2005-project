@@ -45,6 +45,27 @@ h1 {
   width: 100%;
 }
 
+.auth-toggle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: #9fb0c8;
+}
+
+.auth-toggle button {
+  background: transparent;
+  border: 1px solid rgba(120, 160, 220, 0.35);
+  color: #c3d6ff;
+}
+
+.auth-error {
+  margin-top: 0.75rem;
+  color: #ffb3b3;
+  text-align: center;
+}
+
 .layout {
   display: flex;
   flex-direction: column;

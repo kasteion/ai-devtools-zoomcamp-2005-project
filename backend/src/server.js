@@ -35,6 +35,7 @@ mongoose
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true, trim: true },
+    email: { type: String, required: true, unique: true, trim: true },
     passwordHash: { type: String, required: true },
   },
   { timestamps: true }
@@ -110,12 +111,12 @@ const normalizeStats = (payload = {}) => {
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { username, password } = req.body ?? {};
-    if (!username || !password) {
+    const { username, email, password } = req.body ?? {};
+    if (!username || !email || !password) {
       return res.status(400).json({ error: "MISSING_FIELDS" });
     }
     const existing = await User.findOne({
-      username,
+      $or: [{ username }, { email }],
     });
     if (existing) {
       return res.status(409).json({ error: "USER_EXISTS" });
@@ -123,6 +124,7 @@ app.post("/api/auth/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       username,
+      email,
       passwordHash,
     });
     const token = createToken(user.id);
@@ -138,11 +140,13 @@ app.post("/api/auth/register", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { username, password } = req.body ?? {};
-    if (!username || !password) {
+    const { identifier, password } = req.body ?? {};
+    if (!identifier || !password) {
       return res.status(400).json({ error: "MISSING_FIELDS" });
     }
-    const user = await User.findOne({ username });
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }],
+    });
     if (!user) {
       return res.status(401).json({ error: "INVALID_CREDENTIALS" });
     }

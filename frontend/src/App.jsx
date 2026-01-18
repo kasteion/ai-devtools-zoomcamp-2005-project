@@ -14,6 +14,8 @@ import PlaceScreen from "./screens/place";
 import WaitingScreen from "./screens/waiting";
 import PlayScreen from "./screens/play";
 import { Stat } from "./components";
+import AuthScreen from "./screens/auth";
+import { signIn, signUp } from "./services/authApi";
 import {
   BOARD_SIZE,
   SHIPS,
@@ -37,6 +39,16 @@ const initialPlacement = createEmptyPlacement();
 const getCellKey = (row, col) => `${row}-${col}`;
 
 function App() {
+  const [authToken, setAuthToken] = useState(
+    () => window.localStorage.getItem("authToken") || null
+  );
+  const [currentUser, setCurrentUser] = useState(() => {
+    const raw = window.localStorage.getItem("authUser");
+    return raw ? JSON.parse(raw) : null;
+  });
+  const [authMode, setAuthMode] = useState("signin");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
   const [placement, setPlacement] = useState(initialPlacement);
   const [currentShipIndex, setCurrentShipIndex] = useState(0);
   const [orientation, setOrientation] = useState("H");
@@ -68,6 +80,8 @@ function App() {
   const socketRef = useRef(null);
   const playerIdRef = useRef(null);
   const detachSocketHandlersRef = useRef(null);
+
+  const isAuthenticated = Boolean(authToken);
 
   const remainingToPlace = SHIPS.length - currentShipIndex;
   const isInRoom = Boolean(roomId && playerId);
@@ -256,6 +270,52 @@ function App() {
     }, 700);
     return () => window.clearTimeout(timer);
   }, [player, computer, currentTurn, winner, isMultiplayer]);
+
+  const handleAuthSuccess = (response) => {
+    const { token, user } = response ?? {};
+    if (!token || !user) {
+      throw new Error("AUTH_RESPONSE_INVALID");
+    }
+    setAuthToken(token);
+    setCurrentUser(user);
+    window.localStorage.setItem("authToken", token);
+    window.localStorage.setItem("authUser", JSON.stringify(user));
+    setAuthError(null);
+  };
+
+  const handleSignUp = async ({ username, email, password }) => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      const response = await signUp({ username, email, password });
+      handleAuthSuccess(response);
+    } catch (err) {
+      setAuthError(err.message || "SIGNUP_FAILED");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignIn = async ({ identifier, password }) => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      const response = await signIn({ identifier, password });
+      handleAuthSuccess(response);
+    } catch (err) {
+      setAuthError(err.message || "SIGNIN_FAILED");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    setAuthToken(null);
+    setCurrentUser(null);
+    window.localStorage.removeItem("authToken");
+    window.localStorage.removeItem("authUser");
+    handleReset();
+  };
 
   const handleReset = () => {
     setIsMultiplayer(true);
@@ -466,6 +526,28 @@ function App() {
     return fallbackCell.shipId !== null ? "ship" : "empty";
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="app">
+        <header className="header">
+          <div>
+            <p className="eyebrow">Battleship Command</p>
+            <h1>Battleship</h1>
+            <p className="status">Sign in to start playing.</p>
+          </div>
+        </header>
+        <AuthScreen
+          mode={authMode}
+          setMode={setAuthMode}
+          onSignIn={handleSignIn}
+          onSignUp={handleSignUp}
+          loading={authLoading}
+          error={authError}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -473,6 +555,9 @@ function App() {
           <p className="eyebrow">Battleship Command</p>
           <h1>Battleship</h1>
           <p className="status">{message}</p>
+          {currentUser?.username && (
+            <p className="status">Signed in as {currentUser.username}</p>
+          )}
           {errorMessage && <p className="status">Last error: {errorMessage}</p>}
         </div>
         {!isMultiplayer ? (
@@ -500,6 +585,9 @@ function App() {
             <button type="button" onClick={handleReset}>
               Reset Game
             </button>
+            <button type="button" onClick={handleSignOut}>
+              Sign out
+            </button>
           </div>
         ) : (
           <div className="controls">
@@ -512,6 +600,9 @@ function App() {
             </button>
             <button type="button" onClick={handleReset}>
               Reset Game
+            </button>
+            <button type="button" onClick={handleSignOut}>
+              Sign out
             </button>
           </div>
         )}
