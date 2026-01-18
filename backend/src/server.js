@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const path = require("path");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -561,6 +562,10 @@ io.on("connection", (socket) => {
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/openapi.yaml", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "..", "openapi.yaml"));
 });
 
 server.listen(PORT, () => {
