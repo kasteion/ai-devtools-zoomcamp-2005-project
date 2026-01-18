@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
+import { attachSocketHandlers, createSocket } from "./services/socket";
 import {
   uniqueNamesGenerator,
   adjectives,
@@ -162,7 +162,6 @@ const createEmptyPlacement = () => ({
   ships: SHIPS.map((ship) => ({ ...ship, positions: [], hits: 0 })),
 });
 
-const SERVER_URL = "http://localhost:5175";
 const createEmptyFog = () => ({ shots: [], shipsSunk: 0 });
 const createEmptySelfGrid = () => ({ hits: [], misses: [], ships: [] });
 
@@ -201,6 +200,7 @@ function App() {
 
   const socketRef = useRef(null);
   const playerIdRef = useRef(null);
+  const detachSocketHandlersRef = useRef(null);
 
   const remainingToPlace = SHIPS.length - currentShipIndex;
   const isInRoom = Boolean(roomId && playerId);
@@ -407,133 +407,124 @@ function App() {
     setRoomId(null);
     setPlayerId(null);
     setErrorMessage(null);
+    detachSocketHandlersRef.current?.();
+    detachSocketHandlersRef.current = null;
     socketRef.current?.disconnect();
     socketRef.current = null;
   };
 
   const handleConnect = () => {
     if (socketRef.current) return;
-    const socket = io(SERVER_URL, { transports: ["websocket"] });
+    const socket = createSocket();
     socketRef.current = socket;
     setMessage("Connecting to server...");
-
-    socket.on("connect", () => {
-      setIsConnected(true);
-      setMessage("Connected. Create or join a room.");
-      // socket.emit("rooms_please", {});
-    });
-
-    socket.on("disconnect", () => {
-      setIsConnected(false);
-      setMessage("Disconnected from server.");
-      setRoomPhase("idle");
-      setActivePlayerId(null);
-      setRoomPlayers([]);
-      setRoomId(null);
-      setPlayerId(null);
-      setAvailableRooms([]);
-    });
-
-    socket.on(
-      "room_created",
-      ({ roomId: newRoomId, playerId: newPlayerId } = {}) => {
-        if (!newRoomId || !newPlayerId) {
-          setErrorMessage("ROOM_CREATE_FAILED");
-          setMessage("Error: ROOM_CREATE_FAILED");
-          return;
-        }
-        setRoomId(newRoomId);
-        setPlayerId(newPlayerId);
-        playerIdRef.current = newPlayerId;
-        setRoomPhase("placing");
-        setMessage(`Room created (${newRoomId}). Awaiting opponent.`);
-      }
-    );
-
-    socket.on("room_joined", ({ roomId: joinedRoomId, playerId }) => {
-      setRoomId(joinedRoomId);
-      setPlayerId(playerId);
-      playerIdRef.current = playerId;
-      setMessage(`Joined room ${joinedRoomId}. Place your fleet.`);
-    });
-
-    socket.on("room_state", (state) => {
-      const currentPlayerId = playerIdRef.current;
-      setRoomPhase(state.phase);
-      setActivePlayerId(state.activePlayerId);
-      setRoomPlayers(state.players ?? []);
-      if (state.phase === "playing") {
-        setMessage(
-          state.activePlayerId === currentPlayerId
-            ? "Your turn. Fire on the enemy grid."
-            : "Opponent turn. Waiting..."
-        );
-      }
-    });
-
-    socket.on("placement_accepted", ({ readyCount }) => {
-      setMessage(`Placement accepted. Ready players: ${readyCount}/2.`);
-    });
-
-    socket.on("rooms_list", ({ rooms }) => {
-      setAvailableRooms(Array.isArray(rooms) ? rooms : []);
-    });
-
-    socket.on(
-      "shot_result",
-      ({ result, isSunk, shipName, nextTurnPlayerId }) => {
-        if (result === "hit") {
-          setMessage(isSunk ? `Hit! You sank ${shipName}.` : "Hit!");
-        } else if (result === "miss") {
-          setMessage("Miss.");
-        }
-        setActivePlayerId(nextTurnPlayerId);
-      }
-    );
-
-    socket.on("fog_update", ({ enemyGrid }) => {
-      const next = enemyGrid ?? {};
-      setEnemyFog({
-        shots: Array.isArray(next.shots) ? next.shots : [],
-        shipsSunk: Number.isFinite(next.shipsSunk) ? next.shipsSunk : 0,
-      });
-    });
-
-    socket.on("self_update", ({ ownGrid }) => {
-      const next = ownGrid ?? {};
-      const rawHits = Array.isArray(next.hits) ? next.hits : [];
-      const rawMisses = Array.isArray(next.misses) ? next.misses : [];
-      const normalizedMisses = rawMisses.every((entry) => Array.isArray(entry))
-        ? rawMisses
-        : rawMisses.reduce((pairs, value, index) => {
-            if (index % 2 === 0) {
-              return pairs.concat([[value, rawMisses[index + 1]]]);
-            }
-            return pairs;
-          }, []);
-      setSelfGrid({
-        hits: rawHits,
-        misses: normalizedMisses,
-        ships: Array.isArray(next.ships) ? next.ships : [],
-      });
-    });
-
-    socket.on("game_over", ({ winnerId, reason }) => {
-      const currentPlayerId = playerIdRef.current;
-      const youWon = winnerId && winnerId === currentPlayerId;
-      setWinner(youWon ? "player" : "computer");
-      setMessage(
-        reason === "opponent_left"
-          ? "Opponent left the match."
-          : youWon
-          ? "You win! All enemy ships have been sunk."
-          : "You lose. Your fleet was sunk."
-      );
-    });
-
-    socket.on("error", ({ code }) => {
-      setErrorMessage(code);
-      setMessage(`Error: ${code}`);
+    detachSocketHandlersRef.current = attachSocketHandlers({
+      socket,
+      handlers: {
+        onConnect: (connectedSocket) => {
+          setIsConnected(true);
+          setMessage("Connected. Create or join a room.");
+          connectedSocket.emit("rooms_please", {});
+        },
+        onDisconnect: () => {
+          setIsConnected(false);
+          setMessage("Disconnected from server.");
+          setRoomPhase("idle");
+          setActivePlayerId(null);
+          setRoomPlayers([]);
+          setRoomId(null);
+          setPlayerId(null);
+          setAvailableRooms([]);
+        },
+        onRoomCreated: ({ roomId: newRoomId, playerId: newPlayerId }) => {
+          if (!newRoomId || !newPlayerId) {
+            setErrorMessage("ROOM_CREATE_FAILED");
+            setMessage("Error: ROOM_CREATE_FAILED");
+            return;
+          }
+          setRoomId(newRoomId);
+          setPlayerId(newPlayerId);
+          playerIdRef.current = newPlayerId;
+          setRoomPhase("placing");
+          setMessage(`Room created (${newRoomId}). Awaiting opponent.`);
+        },
+        onRoomJoined: ({ roomId: joinedRoomId, playerId }) => {
+          setRoomId(joinedRoomId);
+          setPlayerId(playerId);
+          playerIdRef.current = playerId;
+          setMessage(`Joined room ${joinedRoomId}. Place your fleet.`);
+        },
+        onRoomState: (state) => {
+          const currentPlayerId = playerIdRef.current;
+          setRoomPhase(state.phase);
+          setActivePlayerId(state.activePlayerId);
+          setRoomPlayers(state.players ?? []);
+          if (state.phase === "playing") {
+            setMessage(
+              state.activePlayerId === currentPlayerId
+                ? "Your turn. Fire on the enemy grid."
+                : "Opponent turn. Waiting..."
+            );
+          }
+        },
+        onPlacementAccepted: ({ readyCount }) => {
+          setMessage(`Placement accepted. Ready players: ${readyCount}/2.`);
+        },
+        onRoomsList: ({ rooms }) => {
+          setAvailableRooms(Array.isArray(rooms) ? rooms : []);
+        },
+        onShotResult: ({ result, isSunk, shipName, nextTurnPlayerId }) => {
+          if (result === "hit") {
+            setMessage(isSunk ? `Hit! You sank ${shipName}.` : "Hit!");
+          } else if (result === "miss") {
+            setMessage("Miss.");
+          }
+          setActivePlayerId(nextTurnPlayerId);
+        },
+        onFogUpdate: ({ enemyGrid }) => {
+          const next = enemyGrid ?? {};
+          setEnemyFog({
+            shots: Array.isArray(next.shots) ? next.shots : [],
+            shipsSunk: Number.isFinite(next.shipsSunk) ? next.shipsSunk : 0,
+          });
+        },
+        onSelfUpdate: ({ ownGrid }) => {
+          const next = ownGrid ?? {};
+          const rawHits = Array.isArray(next.hits) ? next.hits : [];
+          const rawMisses = Array.isArray(next.misses) ? next.misses : [];
+          const normalizedMisses = rawMisses.every((entry) =>
+            Array.isArray(entry)
+          )
+            ? rawMisses
+            : rawMisses.reduce((pairs, value, index) => {
+                if (index % 2 === 0) {
+                  return pairs.concat([[value, rawMisses[index + 1]]]);
+                }
+                return pairs;
+              }, []);
+          setSelfGrid({
+            hits: rawHits,
+            misses: normalizedMisses,
+            ships: Array.isArray(next.ships) ? next.ships : [],
+          });
+        },
+        onGameOver: ({ winnerId, reason }) => {
+          const currentPlayerId = playerIdRef.current;
+          const youWon = winnerId && winnerId === currentPlayerId;
+          setWinner(youWon ? "player" : "computer");
+          setMessage(
+            reason === "opponent_left"
+              ? "Opponent left the match."
+              : youWon
+              ? "You win! All enemy ships have been sunk."
+              : "You lose. Your fleet was sunk."
+          );
+        },
+        onError: ({ code }) => {
+          setErrorMessage(code);
+          setMessage(`Error: ${code}`);
+        },
+      },
     });
   };
 
