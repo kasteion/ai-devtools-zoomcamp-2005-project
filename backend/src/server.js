@@ -83,12 +83,20 @@ const sendRoomState = (room) => {
 };
 
 io.on("connection", (socket) => {
-  socket.on("rooms_please", ({}) => {
-    const availableRooms = Array.from(rooms, ([, r]) => ({ ...r })).filter(
-      (r) => r.players.length < 2
-    );
-    console.log(availableRooms);
-  });
+  const emitRooms = () => {
+    const availableRooms = Array.from(rooms, ([, r]) => ({
+      roomId: r.roomId,
+      phase: r.phase,
+      players: r.players.map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+        ready: p.ready,
+      })),
+    })).filter((r) => r.players.length < 2);
+    socket.emit("rooms_list", { rooms: availableRooms });
+  };
+
+  emitRooms();
 
   socket.on("create_room", ({ playerName }) => {
     const roomId = `room_${Math.random().toString(36).slice(2, 8)}`;
@@ -106,6 +114,7 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.emit("room_created", { roomId, playerId });
     sendRoomState(room);
+    emitRooms();
   });
 
   socket.on("join_room", ({ roomId, playerName }) => {
@@ -130,6 +139,7 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.emit("room_joined", { roomId, playerId });
     sendRoomState(room);
+    emitRooms();
   });
 
   socket.on("submit_placement", ({ roomId, playerId, placements }) => {
@@ -247,6 +257,7 @@ io.on("connection", (socket) => {
       });
       rooms.delete(room.roomId);
     });
+    emitRooms();
   });
 });
 

@@ -187,12 +187,13 @@ function App() {
       separator: " ",
     })
   );
-  const [roomIdInput, setRoomIdInput] = useState("");
+  // const [roomIdInput, setRoomIdInput] = useState("");
   const [roomId, setRoomId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
   const [roomPhase, setRoomPhase] = useState("idle");
   const [activePlayerId, setActivePlayerId] = useState(null);
   const [roomPlayers, setRoomPlayers] = useState([]);
+  const [availableRooms, setAvailableRooms] = useState([]);
   const [enemyFog, setEnemyFog] = useState(createEmptyFog());
   const [selfGrid, setSelfGrid] = useState(createEmptySelfGrid());
   const [errorMessage, setErrorMessage] = useState(null);
@@ -419,7 +420,7 @@ function App() {
     socket.on("connect", () => {
       setIsConnected(true);
       setMessage("Connected. Create or join a room.");
-      socket.emit("rooms_please", {});
+      // socket.emit("rooms_please", {});
     });
 
     socket.on("disconnect", () => {
@@ -430,6 +431,7 @@ function App() {
       setRoomPlayers([]);
       setRoomId(null);
       setPlayerId(null);
+      setAvailableRooms([]);
     });
 
     socket.on(
@@ -471,6 +473,10 @@ function App() {
 
     socket.on("placement_accepted", ({ readyCount }) => {
       setMessage(`Placement accepted. Ready players: ${readyCount}/2.`);
+    });
+
+    socket.on("rooms_list", ({ rooms }) => {
+      setAvailableRooms(Array.isArray(rooms) ? rooms : []);
     });
 
     socket.on(
@@ -536,10 +542,11 @@ function App() {
     socketRef.current.emit("create_room", { playerName });
   };
 
-  const handleJoinRoom = () => {
-    if (!socketRef.current || !roomIdInput) return;
+  const handleJoinRoom = (explicitRoomId) => {
+    const nextRoomId = explicitRoomId;
+    if (!socketRef.current || !nextRoomId) return;
     socketRef.current.emit("join_room", {
-      roomId: roomIdInput.trim(),
+      roomId: nextRoomId.trim(),
       playerName,
     });
   };
@@ -659,9 +666,8 @@ function App() {
       {isMultiplayer && multiplayerScreen === "lobby" && (
         <LobbyScreen
           handleCreateRoom={handleCreateRoom}
-          roomIdInput={roomIdInput}
-          setRoomIdInput={setRoomIdInput}
           handleJoinRoom={handleJoinRoom}
+          availableRooms={availableRooms}
         />
       )}
 
@@ -684,7 +690,7 @@ function App() {
 
       {winner && (
         <div className="winner-banner">
-          Winner: {winner === "player" ? "You" : "Computer"}
+          Winner: {winner === "player" ? "You" : "Opponent"}
         </div>
       )}
 
