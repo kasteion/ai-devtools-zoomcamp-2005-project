@@ -2,11 +2,309 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+require("dotenv").config();
 
 const PORT = process.env.PORT || 5175;
+const MONGO_URI = process.env.MONGO_URI;
+const MONGO_DB_NAME = process.env.MONGO_DB_NAME;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const app = express();
 app.use(cors({ origin: "*" }));
+app.use(express.json());
+
+if (!MONGO_URI) {
+  throw new Error("MONGO_URI is required");
+}
+if (!MONGO_DB_NAME) {
+  throw new Error("MONGO_DB_NAME is required");
+}
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is required");
+}
+
+mongoose
+  .connect(MONGO_URI, { dbName: MONGO_DB_NAME })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+const userSchema = new mongoose.Schema(
+  {
+    username: { type: String, required: true, unique: true, trim: true },
+    passwordHash: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
+const User = mongoose.model("User", userSchema);
+
+const userStatsSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true },
+    gamesPlayed: { type: Number, default: 0 },
+    wins: { type: Number, default: 0 },
+    losses: { type: Number, default: 0 },
+    hits: { type: Number, default: 0 },
+    misses: { type: Number, default: 0 },
+    shotsFired: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+const UserStats = mongoose.model("UserStats", userStatsSchema);
+
+const createToken = (userId) =>
+  jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
+
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: "UNAUTHORIZED" });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.userId = payload.sub;
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: "UNAUTHORIZED" });
+  }
+};
+
+const ensureSelf = (req, res, next) => {
+  const { userId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: "INVALID_USER_ID" });
+  }
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+  return next();
+};
+
+const normalizeStats = (payload = {}) => {
+  const fields = [
+    "gamesPlayed",
+    "wins",
+    "losses",
+    "hits",
+    "misses",
+    "shotsFired",
+  ];
+  const stats = {};
+  fields.forEach((field) => {
+    if (payload[field] !== undefined) {
+      const value = Number(payload[field]);
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`INVALID_${field.toUpperCase()}`);
+      }
+      stats[field] = value;
+    }
+  });
+  return stats;
+};
+
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { username, password } = req.body ?? {};
+    if (!username || !password) {
+      return res.status(400).json({ error: "MISSING_FIELDS" });
+    }
+    const existing = await User.findOne({
+      username,
+    });
+    if (existing) {
+      return res.status(409).json({ error: "USER_EXISTS" });
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      username,
+      passwordHash,
+    });
+    const token = createToken(user.id);
+    return res.status(201).json({
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body ?? {};
+    if (!username || !password) {
+      return res.status(400).json({ error: "MISSING_FIELDS" });
+    }
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    }
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    }
+    const token = createToken(user.id);
+    return res.json({
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+app.get("/api/users/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("username email");
+    if (!user) {
+      return res.status(404).json({ error: "USER_NOT_FOUND" });
+    }
+    return res.json({
+      user: { id: user.id, username: user.username, email: user.email },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+app.put(
+  "/api/users/:userId/stats",
+  authMiddleware,
+  ensureSelf,
+  async (req, res) => {
+    try {
+      const existing = await UserStats.findOne({ userId: req.params.userId });
+      if (existing) {
+        return res.status(409).json({ error: "STATS_ALREADY_EXISTS" });
+      }
+      const stats = normalizeStats(req.body);
+      const created = await UserStats.create({
+        userId: req.params.userId,
+        ...stats,
+      });
+      return res.status(201).json({
+        stats: {
+          userId: created.userId,
+          gamesPlayed: created.gamesPlayed,
+          wins: created.wins,
+          losses: created.losses,
+          hits: created.hits,
+          misses: created.misses,
+          shotsFired: created.shotsFired,
+        },
+      });
+    } catch (err) {
+      if (err.message?.startsWith("INVALID_")) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: "SERVER_ERROR" });
+    }
+  }
+);
+
+app.get(
+  "/api/users/:userId/stats",
+  authMiddleware,
+  ensureSelf,
+  async (req, res) => {
+    try {
+      const stats = await UserStats.findOne({ userId: req.params.userId });
+      if (!stats) {
+        return res.status(404).json({ error: "STATS_NOT_FOUND" });
+      }
+      return res.json({
+        stats: {
+          userId: stats.userId,
+          gamesPlayed: stats.gamesPlayed,
+          wins: stats.wins,
+          losses: stats.losses,
+          hits: stats.hits,
+          misses: stats.misses,
+          shotsFired: stats.shotsFired,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ error: "SERVER_ERROR" });
+    }
+  }
+);
+
+app.patch(
+  "/api/users/:userId/stats",
+  authMiddleware,
+  ensureSelf,
+  async (req, res) => {
+    try {
+      const statsUpdate = normalizeStats(req.body);
+      const stats = await UserStats.findOneAndUpdate(
+        { userId: req.params.userId },
+        { $set: statsUpdate },
+        { new: true }
+      );
+      if (!stats) {
+        return res.status(404).json({ error: "STATS_NOT_FOUND" });
+      }
+      return res.json({
+        stats: {
+          userId: stats.userId,
+          gamesPlayed: stats.gamesPlayed,
+          wins: stats.wins,
+          losses: stats.losses,
+          hits: stats.hits,
+          misses: stats.misses,
+          shotsFired: stats.shotsFired,
+        },
+      });
+    } catch (err) {
+      if (err.message?.startsWith("INVALID_")) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: "SERVER_ERROR" });
+    }
+  }
+);
+
+app.get("/api/leaderboard", authMiddleware, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+    const leaderboard = await UserStats.aggregate([
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      { $sort: { wins: -1, gamesPlayed: -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          userId: "$userId",
+          username: "$user.username",
+          wins: 1,
+          losses: 1,
+          gamesPlayed: 1,
+          hits: 1,
+          misses: 1,
+          shotsFired: 1,
+        },
+      },
+    ]);
+
+    return res.json({ leaderboard });
+  } catch (err) {
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
