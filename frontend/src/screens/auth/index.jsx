@@ -32,6 +32,7 @@ const AuthScreen = ({ mode, setMode, onSignIn, onSignUp, loading, error }) => {
         {isSignUp ? (
           <>
             <input
+              className="input"
               type="text"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -39,6 +40,7 @@ const AuthScreen = ({ mode, setMode, onSignIn, onSignUp, loading, error }) => {
               required
             />
             <input
+              className="input"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -48,6 +50,7 @@ const AuthScreen = ({ mode, setMode, onSignIn, onSignUp, loading, error }) => {
           </>
         ) : (
           <input
+            className="input"
             type="text"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
@@ -56,6 +59,7 @@ const AuthScreen = ({ mode, setMode, onSignIn, onSignUp, loading, error }) => {
           />
         )}
         <input
+          className="input"
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}

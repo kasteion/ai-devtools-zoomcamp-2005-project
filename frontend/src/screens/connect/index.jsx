@@ -8,6 +8,7 @@ const ConnectScreen = ({ playerName, setPlayerName, handleConnect }) => {
       <p className="panel-subtitle">Enter your name and connect.</p>
       <div className="controls">
         <input
+          className="input"
           type="text"
           value={playerName}
           onChange={(event) => setPlayerName(event.target.value)}
