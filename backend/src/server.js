@@ -38,7 +38,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, trim: true },
     passwordHash: { type: String, required: true },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const User = mongoose.model("User", userSchema);
@@ -53,7 +53,7 @@ const userStatsSchema = new mongoose.Schema(
     misses: { type: Number, default: 0 },
     shotsFired: { type: Number, default: 0 },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const UserStats = mongoose.model("UserStats", userStatsSchema);
@@ -210,7 +210,7 @@ app.put(
       }
       return res.status(500).json({ error: "SERVER_ERROR" });
     }
-  }
+  },
 );
 
 app.get(
@@ -237,7 +237,7 @@ app.get(
     } catch (err) {
       return res.status(500).json({ error: "SERVER_ERROR" });
     }
-  }
+  },
 );
 
 app.patch(
@@ -247,13 +247,16 @@ app.patch(
   async (req, res) => {
     try {
       const statsUpdate = normalizeStats(req.body);
-      const stats = await UserStats.findOneAndUpdate(
+      let stats = await UserStats.findOneAndUpdate(
         { userId: req.params.userId },
         { $set: statsUpdate },
-        { new: true }
+        { new: true },
       );
       if (!stats) {
-        return res.status(404).json({ error: "STATS_NOT_FOUND" });
+        stats = await UserStats.create({
+          userId: req.params.userId,
+          ...statsUpdate,
+        });
       }
       return res.json({
         stats: {
@@ -272,7 +275,7 @@ app.patch(
       }
       return res.status(500).json({ error: "SERVER_ERROR" });
     }
-  }
+  },
 );
 
 app.get("/api/leaderboard", authMiddleware, async (req, res) => {
@@ -322,7 +325,7 @@ const BOARD_SIZE = 10;
 
 const createEmptyBoard = () =>
   Array.from({ length: BOARD_SIZE }, () =>
-    Array.from({ length: BOARD_SIZE }, () => ({ shipId: null, isHit: false }))
+    Array.from({ length: BOARD_SIZE }, () => ({ shipId: null, isHit: false })),
   );
 
 const createRoom = (roomId) => ({
@@ -515,14 +518,14 @@ io.on("connection", (socket) => {
       playerId: defender.playerId,
       ownGrid: {
         hits: defender.ships.flatMap((ship) =>
-          ship.positions.filter(([r, c]) => defender.board[r][c].isHit)
+          ship.positions.filter(([r, c]) => defender.board[r][c].isHit),
         ),
         misses: defender.board
           .flatMap((rowCells, r) =>
             rowCells
               .map((cell, c) => ({ cell, r, c }))
               .filter((entry) => entry.cell.isHit && entry.cell.shipId === null)
-              .map((entry) => [entry.r, entry.c])
+              .map((entry) => [entry.r, entry.c]),
           )
           .flat(),
         ships: defender.ships.map((ship) => ({

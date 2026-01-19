@@ -1,12 +1,13 @@
 const API_BASE_URL = "http://localhost:5175";
 
 const request = async (path, options = {}) => {
+  const { headers = {}, ...rest } = options;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers ?? {}),
+      ...headers,
     },
-    ...options,
+    ...rest,
   });
 
   const contentType = response.headers.get("content-type") || "";

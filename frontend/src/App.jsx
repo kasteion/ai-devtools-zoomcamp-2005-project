@@ -20,7 +20,6 @@ import StatsScreen from "./screens/stats";
 import LeaderboardScreen from "./screens/leaderboard";
 import {
   fetchUserStats,
-  createUserStats,
   updateUserStats,
   fetchLeaderboard,
 } from "./services/statsApi";
@@ -48,7 +47,7 @@ const getCellKey = (row, col) => `${row}-${col}`;
 
 function App() {
   const [authToken, setAuthToken] = useState(
-    () => window.localStorage.getItem("authToken") || null
+    () => window.localStorage.getItem("authToken") || null,
   );
   const [currentUser, setCurrentUser] = useState(() => {
     const raw = window.localStorage.getItem("authUser");
@@ -79,7 +78,7 @@ function App() {
     uniqueNamesGenerator({
       dictionaries: [adjectives, colors, animals],
       separator: " ",
-    })
+    }),
   );
   // const [roomIdInput, setRoomIdInput] = useState("");
   const [roomId, setRoomId] = useState(null);
@@ -111,22 +110,22 @@ function App() {
   const multiplayerScreen = !isMultiplayer
     ? "local"
     : !isConnected
-    ? "connect"
-    : !isInRoom
-    ? "lobby"
-    : roomPhase === "playing" || roomPhase === "finished"
-    ? "play"
-    : isPlayerReady
-    ? "waiting"
-    : "place";
+      ? "connect"
+      : !isInRoom
+        ? "lobby"
+        : roomPhase === "playing" || roomPhase === "finished"
+          ? "play"
+          : isPlayerReady
+            ? "waiting"
+            : "place";
 
   const playerStats = useMemo(
     () => (player ? calculateStats(player) : null),
-    [player]
+    [player],
   );
   const computerStats = useMemo(
     () => (computer ? calculateStats(computer) : null),
-    [computer]
+    [computer],
   );
 
   const handleToggleOrientation = () => {
@@ -148,10 +147,10 @@ function App() {
       ship.size,
       row,
       col,
-      orientation
+      orientation,
     );
     const nextShips = placement.ships.map((s, index) =>
-      index === currentShipIndex ? { ...s, positions: result.coords } : s
+      index === currentShipIndex ? { ...s, positions: result.coords } : s,
     );
     const nextPlacement = {
       board: result.board,
@@ -176,7 +175,7 @@ function App() {
     setMessage(
       isMultiplayer
         ? "Fleet placed automatically. Submit your placement."
-        : "Fleet placed automatically. Start the battle."
+        : "Fleet placed automatically. Start the battle.",
     );
   };
 
@@ -228,7 +227,7 @@ function App() {
     const { nextState: nextComputer, shotResult } = applyShot(
       computer,
       row,
-      col
+      col,
     );
     if (shotResult.result === "repeat") {
       setMessage("You already fired there. Choose another target.");
@@ -242,7 +241,7 @@ function App() {
               ? "You sunk a ship!"
               : "Fire again after computer turn."
           }`
-        : "Miss! Computer is firing..."
+        : "Miss! Computer is firing...",
     );
     const hasWinner = checkWinner(player, nextComputer);
     if (!hasWinner) {
@@ -269,7 +268,7 @@ function App() {
     setMessage(
       shotResult.result === "hit"
         ? `Computer hit your ship at ${row + 1}, ${col + 1}.`
-        : `Computer missed at ${row + 1}, ${col + 1}. Your turn.`
+        : `Computer missed at ${row + 1}, ${col + 1}. Your turn.`,
     );
     const hasWinner = checkWinner(nextPlayer, computer);
     if (!hasWinner) {
@@ -399,21 +398,12 @@ function App() {
     };
 
     try {
-      if (!userStats) {
-        const response = await createUserStats({
-          userId: currentUser.id,
-          token: authToken,
-          stats: nextStats,
-        });
-        setUserStats(response?.stats ?? nextStats);
-      } else {
-        const response = await updateUserStats({
-          userId: currentUser.id,
-          token: authToken,
-          stats: nextStats,
-        });
-        setUserStats(response?.stats ?? nextStats);
-      }
+      const response = await updateUserStats({
+        userId: currentUser.id,
+        token: authToken,
+        stats: nextStats,
+      });
+      setUserStats(response?.stats ?? nextStats);
     } catch (err) {
       setStatsError(err.message || "STATS_UPDATE_FAILED");
     }
@@ -520,7 +510,7 @@ function App() {
             setMessage(
               state.activePlayerId === currentPlayerId
                 ? "Your turn. Fire on the enemy grid."
-                : "Opponent turn. Waiting..."
+                : "Opponent turn. Waiting...",
             );
           }
         },
@@ -550,7 +540,7 @@ function App() {
           const rawHits = Array.isArray(next.hits) ? next.hits : [];
           const rawMisses = Array.isArray(next.misses) ? next.misses : [];
           const normalizedMisses = rawMisses.every((entry) =>
-            Array.isArray(entry)
+            Array.isArray(entry),
           )
             ? rawMisses
             : rawMisses.reduce((pairs, value, index) => {
@@ -573,8 +563,8 @@ function App() {
             reason === "opponent_left"
               ? "Opponent left the match."
               : youWon
-              ? "You win! All enemy ships have been sunk."
-              : "You lose. Your fleet was sunk."
+                ? "You win! All enemy ships have been sunk."
+                : "You lose. Your fleet was sunk.",
           );
         },
         onError: ({ code }) => {
@@ -627,7 +617,7 @@ function App() {
 
   const getEnemyCellStatus = (row, col) => {
     const shot = enemyFog.shots.find(
-      (entry) => entry.row === row && entry.col === col
+      (entry) => entry.row === row && entry.col === col,
     );
     if (!shot) return "empty";
     return shot.result === "hit" ? "hit" : "miss";
@@ -903,7 +893,7 @@ function App() {
                       className={`cell ${getSelfCellStatus(
                         rowIndex,
                         colIndex,
-                        player ? player.board[rowIndex][colIndex] : cell
+                        player ? player.board[rowIndex][colIndex] : cell,
                       )}`}
                       onClick={() => handleManualPlacement(rowIndex, colIndex)}
                       disabled={!!player}
