@@ -4,7 +4,7 @@ React + Vite frontend for the Battleship game. It includes the authentication fl
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - Backend running on `http://localhost:5175` (see [`backend/README.md`](../backend/README.md))
 
 ## Install dependencies
