@@ -18,6 +18,13 @@ npm run dev
 
 The server logs: `Socket.IO server running on http://localhost:5175`.
 
+## Running tests
+
+```bash
+cd backend
+npm run test
+```
+
 ## Connect to the server
 
 Use a Socket.IO client to connect to the backend URL.

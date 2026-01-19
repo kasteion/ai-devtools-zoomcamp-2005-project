@@ -17,20 +17,20 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-if (!MONGO_URI) {
-  throw new Error("MONGO_URI is required");
-}
-if (!MONGO_DB_NAME) {
-  throw new Error("MONGO_DB_NAME is required");
-}
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is required");
 }
 
-mongoose
-  .connect(MONGO_URI, { dbName: MONGO_DB_NAME })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+const connectToMongo = async () => {
+  if (!MONGO_URI) {
+    throw new Error("MONGO_URI is required");
+  }
+  if (!MONGO_DB_NAME) {
+    throw new Error("MONGO_DB_NAME is required");
+  }
+  await mongoose.connect(MONGO_URI, { dbName: MONGO_DB_NAME });
+  console.log("MongoDB connected");
+};
 
 const userSchema = new mongoose.Schema(
   {
@@ -575,6 +575,17 @@ app.get("/openapi.yaml", (_req, res) => {
   res.sendFile(path.resolve(__dirname, "..", "openapi.yaml"));
 });
 
-server.listen(PORT, () => {
-  console.log(`Socket.IO server running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  connectToMongo()
+    .then(() => {
+      server.listen(PORT, () => {
+        console.log(`Socket.IO server running on http://localhost:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error("MongoDB connection error:", err);
+      process.exit(1);
+    });
+}
+
+module.exports = { app, server };
