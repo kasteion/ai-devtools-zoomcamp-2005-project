@@ -1,21 +1,28 @@
-# React + Vite
+# Battleship Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for the Battleship game. It includes the authentication flow, multiplayer connect/lobby screens, and gameplay UI. The frontend talks to the backend REST and Socket.IO APIs (default backend URL: `http://localhost:5175`).
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node.js 18+
+- Backend running on `http://localhost:5175` (see [`backend/README.md`](../backend/README.md))
 
-## React Compiler
+## Install dependencies
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```sh
+cd frontend
+npm install
+```
 
-## Expanding the ESLint configuration
+## Run the app
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```sh
+npm run dev
+```
 
-## Running tests
+Vite will print the local URL (typically `http://localhost:5173`).
+
+## Run tests
 
 Run the frontend unit tests:
 

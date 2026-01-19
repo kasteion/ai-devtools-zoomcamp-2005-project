@@ -1,24 +1,40 @@
 # Battleship Backend
 
-## Server overview
+Node.js + Express + Socket.IO backend for the Battleship game. It provides REST endpoints for authentication and stats, plus Socket.IO events for multiplayer gameplay. Default base URL: `http://localhost:5175`.
 
-- Transport: Socket.IO over HTTP.
-- Default URL: `http://localhost:5175`.
-- Health check: `GET /health` returns `{ status: "ok" }`.
+## Prerequisites
 
-## Start the server
+- Node.js 20+
+- MongoDB connection string and database name (see Environment variables below)
 
-From the project root:
+## Install dependencies
 
 ```bash
 cd backend
 npm install
+```
+
+## Environment variables
+
+Create a `.env` file in `backend/` or set these variables in your shell:
+
+```bash
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=battleship
+JWT_SECRET=change_me
+PORT=5175
+```
+
+## Run the server
+
+```bash
+cd backend
 npm run dev
 ```
 
 The server logs: `Socket.IO server running on http://localhost:5175`.
 
-## Running tests
+## Run tests
 
 ```bash
 cd backend
