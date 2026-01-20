@@ -45,3 +45,7 @@ your shell or a `.env` file in the repo root.
 # AI system development
 
 Used VS Code with the [Kilo Code](https://kilo.ai/) using OpenAI: GPT-5.2-Codex. For a detailed history of the ai workflow check [here](ai-workflow-history)
+
+# Demo
+
+<video src="https://github.com/kasteion/ai-devtools-zoomcamp-battleship/demo/demo.mp4"></video>
