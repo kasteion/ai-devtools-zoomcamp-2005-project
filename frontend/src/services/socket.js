@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-const SERVER_URL = "http://localhost:5175";
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? "http://localhost:5175";
 const SOCKET_OPTIONS = { transports: ["websocket"] };
 
 export const createSocket = () => io(SERVER_URL, SOCKET_OPTIONS);

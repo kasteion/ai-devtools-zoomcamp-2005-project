@@ -9,4 +9,7 @@ export default defineConfig({
     setupFiles: "./src/setupTests.js",
     globals: true,
   },
+  server: {
+    allowedHosts: "battleship-misty-dust-362.fly.dev",
+  },
 });

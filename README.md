@@ -25,6 +25,23 @@ Provide a complete Battleship experience that supports secure sign-in/sign-up, t
 - [`frontend/`](frontend/README.md): React + Vite client app.
 - [`backend/`](backend/README.md): Node.js + Express + Socket.IO API/server.
 
+## Docker
+
+Build and run everything with Docker Compose (MongoDB, backend, frontend):
+
+```sh
+docker compose up --build
+```
+
+Services and ports:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:5175`
+- MongoDB: `mongodb://localhost:27017`
+
+Environment variables are read from `.env.example` and can be overridden via
+your shell or a `.env` file in the repo root.
+
 # AI system development
 
-Used VS Code with the Kilo Code using OpenAI: GPT-5.2-Codex. For a detailed history of the ai workflow check [here](ai-workflow-history)
+Used VS Code with the [Kilo Code](https://kilo.ai/) using OpenAI: GPT-5.2-Codex. For a detailed history of the ai workflow check [here](ai-workflow-history)
