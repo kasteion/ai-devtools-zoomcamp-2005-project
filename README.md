@@ -48,4 +48,4 @@ Used VS Code with the [Kilo Code](https://kilo.ai/) using OpenAI: GPT-5.2-Codex.
 
 # Demo
 
-<video src="https://github.com/kasteion/ai-devtools-zoomcamp-battleship/demo/demo.mp4"></video>
+[![Watch Demo](https://github.com/kasteion/ai-devtools-zoomcamp-battleship/tree/main/assets/demo.png)](https://www.youtube.com/watch?v=fOcTy9ttfo0)
